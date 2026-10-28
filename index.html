@@ -39,14 +39,18 @@ td button{padding:3px 8px;font-size:12px;margin-left:4px}
 #msg{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:6px;max-width:90vw}
 .chip{display:inline-flex;align-items:center;background:var(--bg);border:1px solid var(--ln);border-radius:14px;padding:2px 4px 2px 10px;margin:0 6px 6px 0}.chip button{border:0;background:none;padding:0 6px}
 @media(max-width:700px){.two,.sum{grid-template-columns:1fr}.sum>div{border:0;padding:8px 0}}
-@media print{header,.noprint{display:none!important}}
+dialog{border:1px solid var(--ln);border-radius:10px;background:var(--sf);color:var(--ink);padding:20px;width:min(620px,94vw);max-height:90vh}dialog::backdrop{background:rgba(10,20,30,.55)}
+dialog .sum strong{font-size:24px!important}dialog .sum>div:first-child strong{font-size:30px!important}
+.plus{width:38px;height:38px;border-radius:50%;padding:0;font-size:24px;line-height:1;background:var(--pri);color:#fff;border-color:var(--pri)}
+tr[data-h]:hover{background:var(--bg)}
+@media print{header,.noprint{display:none!important}body.pd main{display:none}dialog{border:0;position:static;width:100%}dialog button{display:none}}
 </style><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script></head><body>
 <section id="login"><h1>Institute Accounts</h1><p>Sign in to continue.</p>
 <label>Username<input id="lu" autocomplete="username"></label>
 <label>Password<input id="lp" type="password" autocomplete="current-password"></label>
 <button class="p" id="lb">Sign in</button></section>
 <div id="app" class="hide"><header><b>Institute Accounts</b><nav id="nav"></nav><span id="who" style="color:var(--mut)"></span><button id="out">Sign out</button></header><main id="main"></main></div>
-<div id="msg" class="hide" role="status"></div>
+<dialog id="dlg"></dialog><div id="msg" class="hide" role="status"></div>
 <script>
 const API_URL='https://script.google.com/macros/s/AKfycbw0pMFVX08z6qNL7plXORRHfP1RJ9rJNol2z0yrA3M7wgKDtDXe_En7OiFzUazizuo/exec'; // the Apps Script /exec link
 const $=s=>document.querySelector(s);
@@ -58,9 +62,9 @@ async function run(fn,...args){
  if(!j.ok)throw new Error(j.error||'Server error');return j.data}
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const inr=n=>'₹'+Number(n||0).toLocaleString('en-IN');
-let STU=[],META={categories:[],courses:[]};
+let PRE=null,STU=[],META={categories:[],courses:[]};
 const loadMeta=async()=>{META=await run('meta',S.token)};
-const CFG={Fees:{title:'Fee collection',fields:[['date','Date','date'],['student','Student name','text','','dl-students'],['course','Course','text','','dl-courses'],['amount','Amount (₹)','number'],['mode','Payment mode','select',['Cash','UPI','Card','Bank transfer']],['receipt','Receipt no. (auto if blank)','text'],['note','Note','text']],cols:['date','receipt','student','course','mode'],edit:['admin','staff']},
+const CFG={Fees:{title:'Fee collection',fields:[['date','Date','date'],['enroll','Enroll no.','text','','dl-enroll'],['student','Student name','text','','dl-students'],['course','Course','text','','dl-courses'],['amount','Amount (₹)','number'],['mode','Payment mode','select',['Cash','UPI','Card','Bank transfer']],['receipt','Receipt no. (auto if blank)','text'],['note','Note','text']],cols:['date','receipt','enroll','student','course','mode'],edit:['admin','staff']},
 Expenses:{title:'Expenses',fields:[['date','Date','date'],['category','Category','select','CATS'],['amount','Amount (₹)','number'],['note','Note','text']],cols:['date','category','note'],edit:['admin']}};
 let S=null,tab='',cache={};
 const today=()=>new Date(Date.now()+19800000).toISOString().slice(0,10),mstart=()=>today().slice(0,8)+'01';
@@ -69,38 +73,76 @@ async function go(p){try{return await p}catch(e){const m=(e.message||String(e)).
 $('#lb').onclick=async()=>{try{S=await run('login',$('#lu').value,$('#lp').value);await loadMeta();$('#login').classList.add('hide');$('#app').classList.remove('hide');$('#who').textContent=S.name+' ('+S.role+')';nav()}catch(e){toast((e.message||String(e)||'Login failed').replace(/^Error:\s*/,''))}};
 $('#lp').onkeydown=e=>{if(e.key==='Enter')$('#lb').click()};
 $('#out').onclick=()=>run('logout',S.token).finally(()=>location.reload());
-function nav(){const t={admin:['Dashboard','Fees','Expenses','Settings','Users'],manager:['Dashboard','Fees','Expenses'],staff:['Fees']}[S.role];
+function nav(){const t={admin:['Dashboard','Students','Fees','Expenses','Settings','Users'],manager:['Dashboard','Students','Fees','Expenses'],staff:['Students','Fees']}[S.role];
 $('#nav').innerHTML=t.map(x=>`<button data-t="${x}">${x}</button>`).join('');
 $('#nav').onclick=e=>{if(e.target.dataset.t)show(e.target.dataset.t)};show(t[0])}
-function show(t){tab=t;$('#main').onclick=null;$('#main').onsubmit=null;document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));({Dashboard:dash,Fees:()=>ledger('Fees'),Expenses:()=>ledger('Expenses'),Settings:settingsView,Users:usersView})[t]()}
+function show(t){tab=t;$('#main').onclick=null;$('#main').onsubmit=null;document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));({Dashboard:dash,Students:studentsView,Fees:()=>ledger('Fees'),Expenses:()=>ledger('Expenses'),Settings:settingsView,Users:usersView})[t]()}
 async function dash(f=mstart(),t=today()){
  const d=await go(run('dashboard',S.token,f,t)),net=d.income-d.expense,cats=Object.entries(d.byCat).sort((a,b)=>b[1]-a[1]),mx=Math.max(1,...d.trend.map(x=>Math.max(x.inc,x.exp))),cm=Math.max(1,...cats.map(c=>c[1]));
  $('#main').innerHTML=`<div class="bar"><h2>Dashboard</h2><div><label>From<input type="date" id="f" value="${f}"></label></div><div><label>To<input type="date" id="t" value="${t}"></label></div><button class="p" id="ap">Apply</button></div>
  <div class="panel sum"><div><span>Balance for the period</span><strong class="${net<0?'e':'i'}">${inr(net)}</strong></div><div><span>Fees collected (${d.count} receipts)</span><strong class="i">${inr(d.income)}</strong></div><div><span>Expenses</span><strong class="e">${inr(d.expense)}</strong></div></div>
  <div class="two"><div class="panel"><h3>Last 6 months</h3><div class="trend">${d.trend.map(x=>`<div><div class="b"><i style="height:${x.inc/mx*100}%;background:var(--inc)" title="Fees ${inr(x.inc)}"></i><i style="height:${x.exp/mx*100}%;background:var(--exp)" title="Expenses ${inr(x.exp)}"></i></div>${x.label}</div>`).join('')}</div><p style="font-size:12px;color:var(--mut);margin:8px 0 0"><b class="i">■</b> Fees &nbsp;<b class="e">■</b> Expenses</p></div>
  <div class="panel"><h3>Expenses by category</h3>${cats.map(c=>`<div class="row"><span>${esc(c[0])}</span><div class="track"><i style="width:${c[1]/cm*100}%"></i></div><span class="n" style="text-align:right">${inr(c[1])}</span></div>`).join('')||'<p style="color:var(--mut)">No expenses in this period.</p>'}</div></div>
- <div class="panel"><h3>Fees by payment mode</h3>${Object.entries(d.byMode).map(m=>`<span style="margin-right:24px">${esc(m[0])}: <b>${inr(m[1])}</b></span>`).join('')||'<span style="color:var(--mut)">No fees in this period.</span>'}</div>`;
+ <div class="panel"><h3>Fees by payment mode</h3>${Object.entries(d.byMode).map(m=>`<span style="margin-right:24px">${esc(m[0])}: <b>${inr(m[1])}</b></span>`).join('')||'<span style="color:var(--mut)">No fees in this period.</span>'}<p style="margin:12px 0 0">Pending balance of all students: <b class="e">${inr(d.pending)}</b></p></div>`;
  $('#ap').onclick=()=>dash($('#f').value,$('#t').value)}
 async function ledger(k,f=mstart(),t=today()){
  const c=CFG[k],rows=await go(run('list',S.token,k,f,t)),can=c.edit.includes(S.role),tot=rows.reduce((s,r)=>s+Number(r.amount),0);cache[k]=rows;if(k==='Fees'&&can)STU=await go(run('students',S.token));
  const inp=x=>`<div><label>${x[1]}${x[2]==='select'?`<select name="${x[0]}">${(x[3]==='CATS'?META.categories:x[3]).map(o=>`<option>${esc(o)}</option>`).join('')}</select>`:`<input name="${x[0]}" type="${x[2]}" ${x[2]==='number'?'min="1" step="any"':''} ${x[4]?`list="${x[4]}" autocomplete="off"`:''}>`}</label></div>`;
- $('#main').innerHTML=`${can&&k==='Fees'?`<div class="panel noprint"><h3>Student list</h3><p style="margin:0 0 10px;color:var(--mut)">${STU.length} students saved. Upload an Excel/CSV file with columns <b>Name, Course, Phone</b>; names then appear as you type in the form below.</p><input type="file" id="xl" accept=".xlsx,.xls,.csv"></div>`:''}${can?`<form id="fm" class="panel noprint"><datalist id="dl-students">${STU.map(s=>`<option value="${esc(s.name)}">${esc(s.course)}</option>`).join('')}</datalist><datalist id="dl-courses">${META.courses.map(c=>`<option value="${esc(c)}">`).join('')}</datalist><h3 id="ft">New entry</h3><div class="grid">${c.fields.map(inp).join('')}<div><button class="p" type="submit">Save</button> <button type="button" id="cl">Clear</button></div></div></form>`:''}
+ $('#main').innerHTML=`${can&&k==='Fees'?`<div class="panel noprint"><h3>Student list</h3><p style="margin:0 0 10px;color:var(--mut)">${STU.length} students saved. Type an enroll no. or name in the form below and the rest fills in. To bulk-add, upload Excel/CSV with columns <b>Enroll No, Name, Course, Duration, Total Fee, Phone</b>.</p><button type="button" id="ns" style="margin-right:12px">+ New student</button><input type="file" id="xl" accept=".xlsx,.xls,.csv" style="width:auto"></div>`:''}${can?`<form id="fm" class="panel noprint"><datalist id="dl-students">${STU.map(s=>`<option value="${esc(s.name)}">${esc(s.course)}</option>`).join('')}</datalist><datalist id="dl-enroll">${STU.filter(s=>s.enroll).map(s=>`<option value="${esc(s.enroll)}">${esc(s.name)}</option>`).join('')}</datalist><datalist id="dl-courses">${META.courses.map(c=>`<option value="${esc(c)}">`).join('')}</datalist><h3 id="ft">New entry</h3><div class="grid">${c.fields.map(inp).join('')}${k==='Fees'?'<p id="bal" style="grid-column:1/-1;margin:0"></p>':''}<div><button class="p" type="submit">Save</button> <button type="button" id="cl">Clear</button></div></div></form>`:''}
  <div class="bar"><h2>${c.title}</h2><div><label>From<input type="date" id="f" value="${f}"></label></div><div><label>To<input type="date" id="t" value="${t}"></label></div><button id="ap">Show</button><button id="pr" class="noprint">Print</button></div>
  <div class="panel wrap"><table><thead><tr>${c.cols.map(x=>`<th>${x[0].toUpperCase()+x.slice(1)}</th>`).join('')}<th class="n">Amount</th>${can||S.role==='admin'?'<th></th>':''}</tr></thead><tbody>
  ${rows.map(r=>`<tr>${c.cols.map(x=>`<td>${esc(r[x])}</td>`).join('')}<td class="n">${inr(r.amount)}</td>${can?`<td class="n noprint"><button data-e="${r.id}">Edit</button>${S.role==='admin'?`<button data-d="${r.id}">Delete</button>`:''}</td>`:''}</tr>`).join('')||`<tr><td colspan="9" style="color:var(--mut)">No entries in this period.</td></tr>`}
  </tbody><tfoot><tr><th colspan="${c.cols.length}">Total (${rows.length})</th><th class="n">${inr(tot)}</th>${can?'<th></th>':''}</tr></tfoot></table></div>`;
  const R=()=>ledger(k,$('#f').value,$('#t').value);$('#ap').onclick=R;$('#pr').onclick=()=>print();
  if(!can)return;const fm=$('#fm');let eid='';
- const reset=()=>{fm.reset();eid='';fm.date.value=today();$('#ft').textContent='New entry'};reset();$('#cl').onclick=reset;
- if(k==='Fees'){fm.student.oninput=()=>{const s=STU.find(x=>x.name.toLowerCase()===fm.student.value.trim().toLowerCase());if(s&&s.course)fm.course.value=s.course};
+ const reset=()=>{fm.reset();eid='';fm.date.value=today();$('#ft').textContent='New entry';if($('#bal'))$('#bal').innerHTML=''};reset();$('#cl').onclick=reset;
+ if(k==='Fees'){
+ const hint=s=>$('#bal').innerHTML=s?`Total fee <b>${inr(s.totalFee)}</b> · Paid <b class="i">${inr(s.paid)}</b> · Balance <b class="${s.balance>0?'e':'i'}">${inr(s.balance)}</b>`:'',
+ pick=s=>{fm.enroll.value=s.enroll;fm.student.value=s.name;if(s.course)fm.course.value=s.course;hint(s)};
+ fm.student.oninput=()=>{const s=STU.find(x=>x.name.toLowerCase()===fm.student.value.trim().toLowerCase());s?pick(s):hint(null)};
+ fm.enroll.oninput=()=>{const s=STU.find(x=>x.enroll&&x.enroll.toLowerCase()===fm.enroll.value.trim().toLowerCase());s?pick(s):hint(null)};
+ $('#ns').onclick=()=>studentForm(null,R);if(PRE){pick(PRE);PRE=null}
  $('#xl').onchange=async e=>{const fl=e.target.files[0];if(!fl)return;if(!window.XLSX)return toast('Excel reader could not load. Check internet.');
   const wb=XLSX.read(await fl.arrayBuffer()),rr=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});
-  const list=rr.map(r=>{const o={};for(const q in r)o[q.trim().toLowerCase()]=String(r[q]).trim();return{name:o.name||o['student name']||o.student||'',course:o.course||'',phone:o.phone||o.mobile||''}}).filter(x=>x.name);
+  const list=rr.map(r=>{const o={};for(const q in r)o[q.trim().toLowerCase()]=String(r[q]).trim();return{name:o.name||o['student name']||o.student||'',course:o.course||'',phone:o.phone||o.mobile||'',enroll:o['enroll no']||o['enroll no.']||o['enrollment no']||o.enroll||o.enrollment||'',duration:o.duration||'',totalFee:String(o['total fee']||o.fee||o.totalfee||'').replace(/,/g,'')}}).filter(x=>x.name);
   if(!list.length)return toast('No student names found. Check the column headings.');
   const r=await go(run('importStudents',S.token,list));toast(r.added+' added, '+r.skipped+' already existed');R()}}
  fm.onsubmit=async e=>{e.preventDefault();const o={id:eid};c.fields.forEach(x=>o[x[0]]=fm[x[0]].value);await go(run('save',S.token,k,o));toast('Saved');R()};
- $('#main').onclick=async e=>{const b=e.target;if(b.dataset.e){const r=rows.find(x=>x.id===b.dataset.e);eid=r.id;c.fields.forEach(x=>{const el=fm[x[0]];if(el.tagName==='SELECT'&&![...el.options].some(o=>o.value===r[x[0]]))el.add(new Option(r[x[0]]));el.value=r[x[0]]});$('#ft').textContent='Edit entry';scrollTo(0,0)}
+ $('#main').onclick=async e=>{const b=e.target;if(b.dataset.e){const r=rows.find(x=>x.id===b.dataset.e);eid=r.id;c.fields.forEach(x=>{const el=fm[x[0]];if(el.tagName==='SELECT'&&![...el.options].some(o=>o.value===r[x[0]]))el.add(new Option(r[x[0]]));el.value=r[x[0]]});$('#ft').textContent='Edit entry';if(fm.enroll&&fm.enroll.oninput)fm.enroll.oninput();scrollTo(0,0)}
  if(b.dataset.d&&confirm('Delete this entry permanently?')){await go(run('remove',S.token,k,b.dataset.d));toast('Deleted');R()}}}
+const canS=()=>['admin','staff'].includes(S.role);
+function openD(){const d=$('#dlg');if(!d.open)d.showModal();return d}
+function studentForm(s,after){
+ s=s||{};const d=openD(),cs=META.courses.slice();if(s.course&&!cs.includes(s.course))cs.push(s.course);
+ d.innerHTML=`<form id="sf"><h3 style="margin-top:0">${s.id?'Edit student':'New student'}</h3><div class="grid" style="grid-template-columns:1fr 1fr">
+ <label>Enrollment no.<input name="enroll" required value="${esc(s.enroll)}"></label>
+ <label>Name<input name="name" required value="${esc(s.name)}"></label>
+ <label>Course<select name="course" required><option value="">Select course</option>${cs.map(c=>`<option${c===s.course?' selected':''}>${esc(c)}</option>`).join('')}</select></label>
+ <label>Duration<input name="duration" list="dl-dur" placeholder="e.g. 6 months" value="${esc(s.duration)}"><datalist id="dl-dur"><option value="1 month"><option value="3 months"><option value="6 months"><option value="1 year"></datalist></label>
+ <label>Total fee (₹)<input name="totalFee" type="number" min="0" step="any" required value="${s.totalFee||''}"></label></div>
+ <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end"><button type="button" id="cx">Cancel</button><button class="p" type="submit">Save</button></div></form>`;
+ $('#cx').onclick=()=>d.close();
+ $('#sf').onsubmit=async e=>{e.preventDefault();const f=e.target;await go(run('saveStudent',S.token,{id:s.id,enroll:f.enroll.value,name:f.name.value,course:f.course.value,duration:f.duration.value,totalFee:f.totalFee.value}));d.close();toast('Student saved');after&&after()}}
+async function hist(id){
+ const h=await go(run('studentHistory',S.token,id)),s=h.student,d=openD(),tot=h.payments.reduce((a,p)=>a+p.amount,0);
+ d.innerHTML=`<h3 style="margin:0">${esc(s.name)} <span style="color:var(--mut);font-weight:400">· ${esc(s.enroll)}</span></h3><p style="margin:2px 0 14px;color:var(--mut)">${esc(s.course)}${s.duration?' · '+esc(s.duration):''}</p>
+ <div class="sum"><div><span>Balance</span><strong class="${s.balance>0?'e':'i'}">${inr(Math.max(0,s.balance))}</strong></div><div><span>Paid</span><strong class="i">${inr(s.paid)}</strong></div><div><span>Total fee</span><strong>${inr(s.totalFee)}</strong></div></div>
+ <h3 style="margin:16px 0 6px">Payment history (${h.payments.length})</h3><div class="wrap" style="max-height:260px;overflow:auto"><table><thead><tr><th>Date</th><th>Receipt</th><th>Mode</th><th>Note</th><th class="n">Amount</th></tr></thead><tbody>
+ ${h.payments.map(p=>`<tr><td>${esc(p.date)}</td><td>${esc(p.receipt)}</td><td>${esc(p.mode)}</td><td>${esc(p.note)}</td><td class="n">${inr(p.amount)}</td></tr>`).join('')||'<tr><td colspan="5" style="color:var(--mut)">No payments yet.</td></tr>'}</tbody><tfoot><tr><th colspan="4">Total paid</th><th class="n">${inr(tot)}</th></tr></tfoot></table></div>
+ <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">${canS()?'<button class="p" id="pay">+ Add payment</button><button id="ed">Edit student</button>':''}${S.role==='admin'?'<button id="dl">Delete</button>':''}<button id="pt">Print</button><button id="cx">Close</button></div>`;
+ $('#cx').onclick=()=>d.close();$('#pt').onclick=()=>{document.body.classList.add('pd');print();document.body.classList.remove('pd')};
+ if(canS()){$('#pay').onclick=()=>{PRE=s;d.close();show('Fees')};$('#ed').onclick=()=>studentForm(s,()=>hist(id).then(()=>tab==='Students'&&studentsView()))}
+ if(S.role==='admin')$('#dl').onclick=async()=>{if(confirm('Delete this student? Payments stay in the Fees list.')){await go(run('remove',S.token,'Students',id));d.close();studentsView()}}}
+async function studentsView(){
+ STU=await go(run('students',S.token));
+ const T=STU.reduce((a,x)=>({f:a.f+x.totalFee,p:a.p+x.paid,b:a.b+Math.max(0,x.totalFee?x.balance:0)}),{f:0,p:0,b:0});
+ const rowsH=q=>STU.filter(s=>(s.name+' '+s.enroll+' '+s.course).toLowerCase().includes(q.toLowerCase())).map(s=>`<tr data-h="${s.id}" style="cursor:pointer"><td>${esc(s.enroll)}</td><td>${esc(s.name)}</td><td>${esc(s.course)}</td><td>${esc(s.duration)}</td><td class="n">${inr(s.totalFee)}</td><td class="n i">${inr(s.paid)}</td><td class="n ${s.balance>0?'e':'i'}">${s.totalFee?(s.balance>0?inr(s.balance):'Paid'):'—'}</td><td class="n"><button data-h="${s.id}">History</button></td></tr>`).join('')||'<tr><td colspan="8" style="color:var(--mut)">No students found.</td></tr>';
+ $('#main').innerHTML=`<div class="bar"><h2>Students</h2><div style="width:240px"><label>Search<input id="q" placeholder="Name, enroll no. or course"></label></div>${canS()?'<button class="plus" id="ad" title="Add student" aria-label="Add student">+</button>':''}</div>
+ <p style="color:var(--mut)">${STU.length} students · Total fees <b>${inr(T.f)}</b> · Collected <b class="i">${inr(T.p)}</b> · Pending <b class="e">${inr(T.b)}</b></p>
+ <div class="panel wrap"><table><thead><tr><th>Enroll no.</th><th>Name</th><th>Course</th><th>Duration</th><th class="n">Total fee</th><th class="n">Paid</th><th class="n">Balance</th><th></th></tr></thead><tbody id="tb">${rowsH('')}</tbody></table></div>`;
+ $('#q').oninput=e=>$('#tb').innerHTML=rowsH(e.target.value);
+ if(canS())$('#ad').onclick=()=>studentForm(null,studentsView);
+ $('#main').onclick=e=>{const r=e.target.closest('[data-h]');if(r)hist(r.dataset.h)}}
 async function settingsView(){
  await go(loadMeta());
  const box=(ty,title,arr)=>`<div class="panel"><h3>${title}</h3><form data-add="${ty}" style="display:flex;gap:8px;margin-bottom:12px"><input name="v" placeholder="Add new" required><button class="p">Add</button></form>${arr.map(v=>`<span class="chip">${esc(v)}<button data-rm="${ty}" data-v="${esc(v)}" aria-label="Remove ${esc(v)}">×</button></span>`).join('')}</div>`;
