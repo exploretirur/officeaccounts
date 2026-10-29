@@ -52,7 +52,7 @@ tr[data-h]:hover{background:var(--bg)}
 <div id="app" class="hide"><header><b>Institute Accounts</b><nav id="nav"></nav><span id="who" style="color:var(--mut)"></span><button id="out">Sign out</button></header><main id="main"></main></div>
 <dialog id="dlg"></dialog><div id="msg" class="hide" role="status"></div>
 <script>
-const API_URL='PASTE_YOUR_WEB_APP_URL_HERE'; // the Apps Script /exec link
+const API_URL='https://script.google.com/macros/s/AKfycbw0pMFVX08z6qNL7plXORRHfP1RJ9rJNol2z0yrA3M7wgKDtDXe_En7OiFzUazizuo/exec'; // the Apps Script /exec link
 const $=s=>document.querySelector(s);
 async function run(fn,...args){
  let r;try{r=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({fn,args})})}
