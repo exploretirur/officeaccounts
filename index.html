@@ -44,7 +44,7 @@ dialog .sum strong{font-size:24px!important}dialog .sum>div:first-child strong{f
 .plus{width:38px;height:38px;border-radius:50%;padding:0;font-size:24px;line-height:1;background:var(--pri);color:#fff;border-color:var(--pri)}
 tr[data-h]:hover{background:var(--bg)}
 @media print{header,.noprint{display:none!important}body.pd main{display:none}dialog{border:0;position:static;width:100%}dialog button{display:none}}
-</style><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script></head><body>
+</style></head><body>
 <section id="login"><h1>Institute Accounts</h1><p>Sign in to continue.</p>
 <label>Username<input id="lu" autocomplete="username"></label>
 <label>Password<input id="lp" type="password" autocomplete="current-password"></label>
@@ -52,10 +52,15 @@ tr[data-h]:hover{background:var(--bg)}
 <div id="app" class="hide"><header><b>Institute Accounts</b><nav id="nav"></nav><span id="who" style="color:var(--mut)"></span><button id="out">Sign out</button></header><main id="main"></main></div>
 <dialog id="dlg"></dialog><div id="msg" class="hide" role="status"></div>
 <script>
-const API_URL='https://script.google.com/macros/s/AKfycbw0pMFVX08z6qNL7plXORRHfP1RJ9rJNol2z0yrA3M7wgKDtDXe_En7OiFzUazizuo/exec'; // the Apps Script /exec link
+const API_URL='https://script.google.com/macros/s/AKfycbyXOOd00H5eoOmBao_nGoP9nCPB15GB0yIaBMy4zzqhWZbHPO90zeRhr5pdkRxKkK3l/exec; // the Apps Script /exec link
 const $=s=>document.querySelector(s);
+const LIB={},CDN='https://cdnjs.cloudflare.com/ajax/libs/';
+const loadLib=u=>LIB[u]||(LIB[u]=new Promise((ok,no)=>{const s=document.createElement('script');s.src=u;s.onload=ok;s.onerror=()=>{delete LIB[u];no(new Error('Could not load a helper library. Check your internet.'))};document.head.appendChild(s)}));
+const needX=()=>loadLib(CDN+'xlsx/0.18.5/xlsx.full.min.js');
+const needP=async()=>{await loadLib(CDN+'jspdf/2.5.1/jspdf.umd.min.js');await loadLib(CDN+'jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js')};
 async function run(fn,...args){
- let r;try{r=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({fn,args})})}
+ if(!/^https:\/\/script\.google\.com\/macros\/s\/[^ ]+\/exec$/.test(API_URL.trim()))throw new Error('API_URL is not set correctly. Open index.html, find API_URL and paste your Apps Script link (it starts with https://script.google.com/macros/s/ and ends with /exec).');
+ let r;try{r=await fetch(API_URL.trim(),{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({fn,args})})}
  catch(e){throw new Error('Cannot reach the server. Check your internet and the API_URL.')}
  const raw=await r.text();let j;
  try{j=JSON.parse(raw)}catch(e){throw new Error('Server did not return data ('+r.status+'). It said: '+raw.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim().slice(0,160))}
@@ -70,7 +75,7 @@ let S=null,tab='',cache={};
 const today=()=>new Date(Date.now()+19800000).toISOString().slice(0,10),mstart=()=>today().slice(0,8)+'01';
 function toast(m){const e=$('#msg');e.textContent=m;e.classList.remove('hide');clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.add('hide'),3500)}
 async function go(p){try{return await p}catch(e){const m=(e.message||String(e)).replace(/^Error:\s*/,'');toast(m);if(/Session expired/.test(m))setTimeout(()=>location.reload(),1200);throw e}}
-$('#lb').onclick=async()=>{try{S=await run('login',$('#lu').value,$('#lp').value);await loadMeta();$('#login').classList.add('hide');$('#app').classList.remove('hide');$('#who').textContent=S.name+' ('+S.role+')';nav()}catch(e){toast((e.message||String(e)||'Login failed').replace(/^Error:\s*/,''))}};
+$('#lb').onclick=async()=>{try{S=await run('login',$('#lu').value,$('#lp').value);META=S.meta||META;setTimeout(()=>{needX().catch(()=>0);needP().catch(()=>0)},4000);$('#login').classList.add('hide');$('#app').classList.remove('hide');$('#who').textContent=S.name+' ('+S.role+')';nav()}catch(e){toast((e.message||String(e)||'Login failed').replace(/^Error:\s*/,''))}};
 $('#lp').onkeydown=e=>{if(e.key==='Enter')$('#lb').click()};
 $('#out').onclick=()=>run('logout',S.token).finally(()=>location.reload());
 function nav(){const t={admin:['Dashboard','Students','Fees','Expenses','Reports','Settings','Users'],manager:['Dashboard','Students','Fees','Expenses','Reports'],staff:['Students','Fees']}[S.role];
@@ -86,7 +91,7 @@ async function dash(f=mstart(),t=today()){
  <div class="panel"><h3>Fees by payment mode</h3>${Object.entries(d.byMode).map(m=>`<span style="margin-right:24px">${esc(m[0])}: <b>${inr(m[1])}</b></span>`).join('')||'<span style="color:var(--mut)">No fees in this period.</span>'}<p style="margin:12px 0 0">Pending balance of all students: <b class="e">${inr(d.pending)}</b></p></div>`;
  $('#ap').onclick=()=>dash($('#f').value,$('#t').value)}
 async function ledger(k,f=mstart(),t=today()){
- const c=CFG[k],rows=await go(run('list',S.token,k,f,t)),can=c.edit.includes(S.role),tot=rows.reduce((s,r)=>s+Number(r.amount),0);cache[k]=rows;if(k==='Fees'&&can)STU=await go(run('students',S.token));
+ const c=CFG[k],can=c.edit.includes(S.role),[rows,stu]=await Promise.all([go(run('list',S.token,k,f,t)),k==='Fees'&&can?go(run('students',S.token)):null]),tot=rows.reduce((s,r)=>s+Number(r.amount),0);cache[k]=rows;if(stu)STU=stu;
  const inp=x=>`<div><label>${x[1]}${x[2]==='select'?`<select name="${x[0]}">${(x[3]==='CATS'?META.categories:x[3]).map(o=>`<option>${esc(o)}</option>`).join('')}</select>`:`<input name="${x[0]}" type="${x[2]}" ${x[2]==='number'?'min="1" step="any"':''} ${x[4]?`list="${x[4]}" autocomplete="off"`:''}>`}</label></div>`;
  $('#main').innerHTML=`${can&&k==='Fees'?`<div class="panel noprint"><h3>Student list</h3><p style="margin:0 0 10px;color:var(--mut)">${STU.length} students saved. Type an enroll no. or name in the form below and the rest fills in. Bulk upload from Excel is in the Students tab.</p><button type="button" id="ns">+ New student</button></div>`:''}${can?`<form id="fm" class="panel noprint"><datalist id="dl-students">${STU.map(s=>`<option value="${esc(s.name)}">${esc(s.course)}</option>`).join('')}</datalist><datalist id="dl-enroll">${STU.filter(s=>s.enroll).map(s=>`<option value="${esc(s.enroll)}">${esc(s.name)}</option>`).join('')}</datalist><datalist id="dl-courses">${META.courses.map(c=>`<option value="${esc(c)}">`).join('')}</datalist><h3 id="ft">New entry</h3><div class="grid">${c.fields.map(inp).join('')}${k==='Fees'?'<p id="bal" style="grid-column:1/-1;margin:0"></p>':''}<div><button class="p" type="submit">Save</button> <button type="button" id="cl">Clear</button></div></div></form>`:''}
  <div class="bar"><h2>${c.title}</h2><div><label>From<input type="date" id="f" value="${f}"></label></div><div><label>To<input type="date" id="t" value="${t}"></label></div><button id="ap">Show</button><button id="pr" class="noprint">Print</button></div>
@@ -109,7 +114,7 @@ const RT={day:'Day wise collection',week:'Week wise collection',month:'Month wis
 const wk=d=>{const x=new Date(d+'T00:00:00Z');x.setUTCDate(x.getUTCDate()-(x.getUTCDay()+6)%7);return x.toISOString().slice(0,10)};
 const fv=(m,i,v,pdf)=>m.cur.includes(i)?(pdf?'Rs. ':'₹')+Number(v||0).toLocaleString('en-IN'):v==null?'':String(v);
 async function buildReport(ty,f,t){
- const fees=ty==='student'?[]:await go(run('list',S.token,'Fees',f,t)),m={ty:ty,title:RT[ty],sub:'Period: '+f+' to '+t};
+ const [fees,st]=await Promise.all([ty==='student'?[]:go(run('list',S.token,'Fees',f,t)),['student','course'].includes(ty)?go(run('students',S.token)):null]),m={ty:ty,title:RT[ty],sub:'Period: '+f+' to '+t};
  const tot=(rows,i)=>rows.reduce((s,r)=>s+Number(r[i]||0),0);
  const grp=fn=>{const o={};fees.forEach(r=>{const k=fn(r.date);o[k]=o[k]||[k,0,0];o[k][1]++;o[k][2]+=Number(r.amount)});return Object.keys(o).sort().map(k=>o[k])};
  if(['day','week','month'].includes(ty)){
@@ -119,7 +124,6 @@ async function buildReport(ty,f,t){
   m.cols=['Date','Receipt','Enroll no.','Student','Course','Mode','Amount'];m.rows=fees.slice().reverse().map(r=>[r.date,r.receipt,r.enroll,r.student,r.course,r.mode,Number(r.amount)]);
   m.num=[6];m.cur=[6];m.foot=['Total','','','','','',tot(m.rows,6)]}
  else{
-  const st=await go(run('students',S.token));
   if(ty==='student'){m.sub='All-time position of every student';m.cols=['Enroll no.','Name','Course','Total fee','Total paid','Balance'];
    m.rows=st.slice().sort((a,b)=>b.balance-a.balance).map(s=>[s.enroll,s.name,s.course,s.totalFee,s.paid,s.balance]);m.num=[3,4,5];m.cur=[3,4,5];m.foot=['Total','','',tot(m.rows,3),tot(m.rows,4),tot(m.rows,5)]}
   else{const o={},nw=k=>o[k]=o[k]||[k,0,0,0,0,0];
@@ -128,9 +132,9 @@ async function buildReport(ty,f,t){
    m.rows=Object.values(o).sort((a,b)=>a[0]<b[0]?-1:1);m.num=[1,2,3,4,5];m.cur=[2,3,4,5];m.foot=['Total',tot(m.rows,1),tot(m.rows,2),tot(m.rows,3),tot(m.rows,4),tot(m.rows,5)]}}
  return m}
 const fname=m=>'report-'+m.ty+'-'+today();
-function dlXlsx(m){if(!window.XLSX)return toast('Excel library did not load. Check internet.');
+async function dlXlsx(m){await go(needX());
  const ws=XLSX.utils.aoa_to_sheet([[m.title],[m.sub],[],m.cols,...m.rows,m.foot]),wb=XLSX.utils.book_new();ws['!cols']=m.cols.map(()=>({wch:18}));XLSX.utils.book_append_sheet(wb,ws,'Report');XLSX.writeFile(wb,fname(m)+'.xlsx')}
-function dlPdf(m){if(!window.jspdf)return toast('PDF library did not load. Check internet.');
+async function dlPdf(m){await go(needP());
  const p=new window.jspdf.jsPDF({orientation:m.cols.length>5?'landscape':'portrait'}),al={};m.num.forEach(i=>al[i]={halign:'right'});
  p.setFontSize(15);p.text(m.title,14,16);p.setFontSize(10);p.text(m.sub,14,23);
  p.autoTable({startY:28,head:[m.cols],body:m.rows.map(r=>r.map((v,i)=>fv(m,i,v,1))),foot:[m.foot.map((v,i)=>fv(m,i,v,1))],columnStyles:al,styles:{fontSize:9},headStyles:{fillColor:[29,78,137]},footStyles:{fillColor:[230,236,242],textColor:20}});
@@ -174,8 +178,8 @@ async function studentsView(){
  ${canS()?`<div class="panel noprint"><h3>Bulk upload from Excel</h3><p style="margin:0 0 10px;color:var(--mut)">Columns: <b>Enroll No, Name, Course, Duration, Total Fee, Phone</b>. Students with an existing enroll no. are skipped.</p><input type="file" id="xl" accept=".xlsx,.xls,.csv" style="width:auto"> <button type="button" id="tpl">Download template</button></div>`:''}<div class="panel wrap"><table><thead><tr><th>Enroll no.</th><th>Name</th><th>Course</th><th>Duration</th><th class="n">Total fee</th><th class="n">Paid</th><th class="n">Balance</th><th></th></tr></thead><tbody id="tb">${rowsH('')}</tbody></table></div>`;
  $('#q').oninput=e=>$('#tb').innerHTML=rowsH(e.target.value);
  if(canS()){$('#ad').onclick=()=>studentForm(null,studentsView);
- $('#tpl').onclick=()=>{const ws=XLSX.utils.aoa_to_sheet([['Enroll No','Name','Course','Duration','Total Fee','Phone'],['2026001','Sample Student','Tally','3 months',6000,'9876543210']]),wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Students');XLSX.writeFile(wb,'student-template.xlsx')};
- $('#xl').onchange=async e=>{const fl=e.target.files[0];if(!fl)return;if(!window.XLSX)return toast('Excel reader could not load. Check internet.');
+ $('#tpl').onclick=async()=>{await go(needX());const ws=XLSX.utils.aoa_to_sheet([['Enroll No','Name','Course','Duration','Total Fee','Phone'],['2026001','Sample Student','Tally','3 months',6000,'9876543210']]),wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Students');XLSX.writeFile(wb,'student-template.xlsx')};
+ $('#xl').onchange=async e=>{const fl=e.target.files[0];if(!fl)return;await go(needX());
   const wb=XLSX.read(await fl.arrayBuffer()),rr=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});
   const list=rr.map(r=>{const o={};for(const q in r)o[q.trim().toLowerCase()]=String(r[q]).trim();return{name:o.name||o['student name']||o.student||'',course:o.course||'',phone:o.phone||o.mobile||'',enroll:o['enroll no']||o['enroll no.']||o['enrollment no']||o.enroll||o.enrollment||'',duration:o.duration||'',totalFee:String(o['total fee']||o.fee||o.totalfee||'').replace(/,/g,'')}}).filter(x=>x.name);
   if(!list.length)return toast('No student names found. Check the column headings.');
