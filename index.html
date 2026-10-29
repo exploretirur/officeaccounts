@@ -52,7 +52,7 @@ tr[data-h]:hover{background:var(--bg)}
 <div id="app" class="hide"><header><b>Institute Accounts</b><nav id="nav"></nav><span id="who" style="color:var(--mut)"></span><button id="out">Sign out</button></header><main id="main"></main></div>
 <dialog id="dlg"></dialog><div id="msg" class="hide" role="status"></div>
 <script>
-const API_URL='https://script.google.com/macros/s/AKfycbyXOOd00H5eoOmBao_nGoP9nCPB15GB0yIaBMy4zzqhWZbHPO90zeRhr5pdkRxKkK3l/exec; // the Apps Script /exec link
+const API_URL='https://script.google.com/macros/s/AKfycbyXOOd00H5eoOmBao_nGoP9nCPB15GB0yIaBMy4zzqhWZbHPO90zeRhr5pdkRxKkK3l/exec'; // the Apps Script /exec link
 const $=s=>document.querySelector(s);
 const LIB={},CDN='https://cdnjs.cloudflare.com/ajax/libs/';
 const loadLib=u=>LIB[u]||(LIB[u]=new Promise((ok,no)=>{const s=document.createElement('script');s.src=u;s.onload=ok;s.onerror=()=>{delete LIB[u];no(new Error('Could not load a helper library. Check your internet.'))};document.head.appendChild(s)}));
